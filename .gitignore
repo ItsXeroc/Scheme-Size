@@ -3,9 +3,9 @@
 .vscode/*
 .idea/*
 
-bin/*
-lib/*
-build/*
+dist/
+build/
+
 
 *.classpath
 *.project

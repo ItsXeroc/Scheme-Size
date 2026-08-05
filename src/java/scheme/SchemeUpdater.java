@@ -27,8 +27,12 @@ public class SchemeUpdater {
         url = ghApi + "/repos/" + repo + "/releases/latest";
 
         Jval meta = Jval.read(mod.root.child("mod.hjson").readString());
-        mod.meta.author = meta.getString("author"); // restore colors in mod's meta
-        mod.meta.description = meta.getString("description");
+        mod.meta.author = meta.getString("author", mod.meta.author);
+        mod.meta.description = meta.getString("description", mod.meta.description);
+        mod.meta.subtitle = meta.getString("subtitle", mod.meta.subtitle);
+        mod.meta.displayName = meta.getString("displayName", mod.meta.displayName);
+        mod.meta.repo = meta.getString("repo", repo);
+        mod.setRepo(mod.meta.repo);
     }
 
     public static void check() {

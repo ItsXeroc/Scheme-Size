@@ -2,7 +2,7 @@ plugins {
     id 'java'
 }
 
-version = '1.0'
+version = '1.0.2'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -28,13 +28,14 @@ sourceSets {
 
 repositories {
     mavenCentral()
+    maven { url "https://maven.xpdustry.com/mindustry" }
     maven { url "https://raw.githubusercontent.com/Zelaux/MindustryRepo/master/repository" }
     maven { url "https://jitpack.io" }
 }
 
 ext {
-    mindustryVersion = project.findProperty('mindustryVersion') ?: 'v159'
-    jabelVersion = '1.1.0'
+    mindustryVersion = project.findProperty('mindustryVersion') ?: 'v158.1'
+    gameBuild = project.findProperty('gameBuild') ?: '158'
     isWindows = System.getProperty("os.name").toLowerCase().contains("windows")
     sdkRoot = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
 }
@@ -42,7 +43,6 @@ ext {
 tasks.withType(JavaCompile).configureEach {
     options.compilerArgs.addAll(['--release', '8'])
 }
-
 
 dependencies {
     compileOnly "com.github.Anuken.Arc:arc-core:$mindustryVersion"
@@ -53,14 +53,31 @@ dependencies {
     annotationProcessor files("libs/jabel-1.1.0.jar")
 }
 
+tasks.register('writeModMeta') {
+    def out = file("$buildDir/generated/mod.hjson")
+    outputs.file(out)
+    inputs.file(file('mod.hjson'))
+    inputs.property('gameBuild', gameBuild)
+    inputs.property('modVersion', version)
+    doLast {
+        def text = file('mod.hjson').text
+        text = text.replaceAll(/(?m)^minGameVersion:.*$/, "minGameVersion: ${gameBuild}")
+        text = text.replaceAll(/(?m)^version:.*$/, "version: ${version}")
+        text = text.replaceAll(/Requires Mindustry v\d+\+/, "Requires Mindustry v${gameBuild}+")
+        out.parentFile.mkdirs()
+        out.text = text
+    }
+}
+
 tasks.jar {
-    archiveFileName = "${base.archivesName.get()}Desktop.jar"
+    dependsOn writeModMeta
+    archiveFileName = "${base.archivesName.get()}-v${gameBuild}-Desktop.jar"
 
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
 
-    from(rootDir) {
+    from(file("$buildDir/generated")) {
         include 'mod.hjson'
     }
 }
@@ -94,8 +111,10 @@ tasks.register("jarAndroid") {
                 .first()
 
         def d8 = new File(buildToolsDir, isWindows ? "d8.bat" : "d8").absolutePath
+        def desktopJar = "${base.archivesName.get()}-v${gameBuild}-Desktop.jar"
+        def androidJar = "${base.archivesName.get()}-v${gameBuild}-Android.jar"
 
-        "$d8 $dependencies --min-api 14 --output ${base.archivesName.get()}Android.jar ${base.archivesName.get()}Desktop.jar"
+        "$d8 $dependencies --min-api 14 --output ${androidJar} ${desktopJar}"
                 .execute(null, new File("build/libs"))
                 .waitForProcessOutput(System.out, System.err)
     }
@@ -104,18 +123,41 @@ tasks.register("jarAndroid") {
 tasks.register("deploy", Jar) {
     dependsOn "jarAndroid", "jar"
 
-    archiveFileName = "${base.archivesName.get()}.jar"
+    archiveFileName = "${base.archivesName.get()}-v${gameBuild}.jar"
 
     from {
         [
-                zipTree("$buildDir/libs/${base.archivesName.get()}Desktop.jar"),
-                zipTree("$buildDir/libs/${base.archivesName.get()}Android.jar")
+                zipTree("$buildDir/libs/${base.archivesName.get()}-v${gameBuild}-Desktop.jar"),
+                zipTree("$buildDir/libs/${base.archivesName.get()}-v${gameBuild}-Android.jar")
         ]
     }
 
     doLast {
-        delete "$buildDir/libs/${base.archivesName.get()}Desktop.jar"
-        delete "$buildDir/libs/${base.archivesName.get()}Android.jar"
+        delete "$buildDir/libs/${base.archivesName.get()}-v${gameBuild}-Desktop.jar"
+        delete "$buildDir/libs/${base.archivesName.get()}-v${gameBuild}-Android.jar"
     }
+}
 
+def targets = [
+        [name: '156', version: 'v156', build: '156'],
+        [name: '158', version: 'v158.1', build: '158'],
+        [name: '159', version: 'v159', build: '159'],
+]
+
+targets.each { t ->
+    tasks.register("deploy${t.name}", Exec) {
+        group = 'build'
+        workingDir = projectDir
+        environment 'ANDROID_HOME', (sdkRoot ?: '')
+        environment 'ANDROID_SDK_ROOT', (sdkRoot ?: '')
+        commandLine './gradlew', 'clean', 'deploy',
+                "-PmindustryVersion=${t.version}",
+                "-PgameBuild=${t.build}",
+                '--no-daemon'
+    }
+}
+
+tasks.register('deployAll') {
+    group = 'build'
+    dependsOn targets.collect { "deploy${it.name}" }
 }

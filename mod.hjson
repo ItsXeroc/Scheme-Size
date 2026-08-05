@@ -1,18 +1,9 @@
 name: scheme-size
 displayName: "!Scheme Size"
-subtitle: "No longer just increases the schema size"
-
-author: '''
-[#FF6B9D]Mithra
-[gray]Original: [#0096FF]xzxADIxzx[]
+subtitle: "Actually increase scheme size"
+author: "[accent]Mithra[]\n[gray]Original: [accent]xzxADIxzx[]"
+description:
 '''
-
-version: 1.0.0
-minGameVersion: 156
-hidden: true
-main: scheme.Main
-
-description: "
 A custom port of Scheme Size for newer Mindustry builds.
 
 Started as a schematic size increase, now a set of QoL and admin tools: bigger schematics, building helpers, renderer options, AI, keybinds, CLaJ, and an advanced console.
@@ -20,15 +11,22 @@ Started as a schematic size increase, now a set of QoL and admin tools: bigger s
 [accent]Client & server:[]
 Same jar works as a normal client mod and on a dedicated server. On a vanilla server (without this mod) you still get client QoL. If the server also has the jar, admin tools like fill, items, units, teleport and rules sync over the network - even when you are not the local host. Those actions require admin.
 
-Requires Mindustry v156+. Vanilla recommended. Works on desktop and mobile.
+Requires Mindustry v158+. Vanilla recommended. Works on desktop and mobile.
 
-Original mod by [#0096FF]xzxADIxzx[]. Port by [#FF6B9D]Mithra[]. The original author is not involved in this port.
+Builds: v156 / v158 / v159 jars on GitHub Releases.
 
-[orange]
+Original mod by [accent]xzxADIxzx[]. Port by [accent]Mithra[]. The original author is not involved in this port.
+
+[accent]
  - Schematic size 512
  - Building & renderer tools
  - Admin tools (optional server sync)
  - AI support
  - CLaJ, keybinds, updater
  - Advanced console & rule setter
-"
+'''
+version: 1.0.2
+minGameVersion: 158
+repo: ItsXeroc/Scheme-Size
+hidden: true
+main: scheme.Main
