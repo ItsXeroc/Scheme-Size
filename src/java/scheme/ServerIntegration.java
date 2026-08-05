@@ -14,66 +14,53 @@ import scheme.tools.DisabledTools;
 import static arc.Core.*;
 import static mindustry.Vars.*;
 
-/**
- * Package manager for getting player data from the server.
- * <p>
- * How it works:
- * When a player connects to a server it will send a SendMeSubtitle packet,
- * players with this mod will send a MySubtitle packet in response.
- * Then the server will send a Subtitles packet to all connections
- * containing a list of ids and subtitles of players who use this mod.
- * </p>
- * Reference implementation: server region in {@link ServerIntegration#load()}
- */
 @SuppressWarnings("unchecked")
 public class ServerIntegration {
 
-    /** List of user ids that use this mod. */
     public static IntMap<String> SSUsers = new IntMap<>(8);
-
-    /** Host's player id. If you're joining a headless server it will be -1. */
     public static int hostID = -1;
-
-    /** Whether the player received subtitles from the server. */
     public static boolean hasData;
-
     public static boolean schemeAvailable;
 
     public static void load() {
-        // region Server
-
-        Events.on(PlayerJoin.class, event -> Call.clientPacketReliable(event.player.con, "SendMeSubtitle", player == null ? null : String.valueOf(player.id)));
+        Events.on(PlayerJoin.class, event -> {
+            if (event.player == null || event.player.con == null) return;
+            Call.clientPacketReliable(event.player.con, "SendMeSubtitle", player == null ? null : String.valueOf(player.id));
+        });
         Events.on(PlayerLeave.class, event -> {
-            if (event.player != null/* how? */) SSUsers.remove(event.player.id);
+            if (event.player != null) SSUsers.remove(event.player.id);
         });
 
-        netServer.addPacketHandler("MySubtitle", (target, args) -> {
-            try {
-                if (args != null && args.length() > 256) return;
-                SSUsers.put(target.id, args);
-                IntMap<String> single = new IntMap<>(1);
-                single.put(target.id, args);
-                Call.clientPacketReliable("Subtitles", JsonIO.write(single));
+        Runnable registerServer = () -> {
+            if (netServer == null) return;
+            netServer.addPacketHandler("MySubtitle", (target, args) -> {
+                try {
+                    if (args != null && args.length() > 256) return;
+                    SSUsers.put(target.id, args);
+                    IntMap<String> single = new IntMap<>(1);
+                    single.put(target.id, args);
+                    Call.clientPacketReliable("Subtitles", JsonIO.write(single));
 
-                if (SSUsers.size > 1) {
-                    Call.clientPacketReliable(target.con, "Subtitles", JsonIO.write(SSUsers));
+                    if (SSUsers.size > 1) {
+                        Call.clientPacketReliable(target.con, "Subtitles", JsonIO.write(SSUsers));
+                    }
+                } catch (Exception e) {
+                    Log.warn("Invalid MySubtitle packet from @", target.name, e);
                 }
-            } catch (Exception e) {
-                Log.warn("Invalid MySubtitle packet from @", target.name, e);
-            }
-        });
+            });
+        };
 
-        // schemesize.available is handled by ServerSide
+        registerServer.run();
+        Events.on(ServerLoadEvent.class, e -> registerServer.run());
 
-        // endregion
-        // region Client
+        if (headless || netClient == null) return;
 
         Events.run(HostEvent.class, ServerIntegration::clear);
         Events.run(ClientPreConnectEvent.class, ServerIntegration::clear);
 
         netClient.addPacketHandler("SendMeSubtitle", args -> {
             try {
-                Call.serverPacketReliable("MySubtitle", settings.getString("subtitle"));
+                Call.serverPacketReliable("MySubtitle", settings.getString("subtitle", ""));
                 if (args != null) hostID = Strings.parseInt(args, -1);
             } catch (Exception e) {
                 Log.warn("Invalid SendMeSubtitle packet", e);
@@ -111,32 +98,21 @@ public class ServerIntegration {
         });
 
         Events.on(WorldLoadEndEvent.class, e -> {
-            if(!net.client())DisabledTools.clear();
+            if (!net.client()) DisabledTools.clear();
             initHost();
 
             Runnable[] task = new Runnable[1];
-
             task[0] = () -> {
-                if(!state.isGame()){
+                if (!state.isGame()) {
                     Time.runTask(60f, task[0]);
                     return;
                 }
-
-                Core.app.post(() -> {
-                    Call.serverBinaryPacketReliable(
-                        "schemesize.available",
-                        new byte[]{0}
-                    );
-                });
+                Core.app.post(() -> Call.serverBinaryPacketReliable("schemesize.available", new byte[]{0}));
             };
-
             task[0].run();
         });
-
-        // endregion
     }
 
-    /** Clears all data about users. */
     public static void clear() {
         SSUsers.clear();
         hostID = -1;
@@ -145,29 +121,25 @@ public class ServerIntegration {
         DisabledTools.clear();
     }
 
-    /** Called after world load when player.id is assigned. */
     public static void initHost() {
-        if (!net.client()) {
+        if (!net.client() && player != null) {
             hasData = true;
-            SSUsers.put(player.id, settings.getString("subtitle"));
+            SSUsers.put(player.id, settings.getString("subtitle", ""));
         }
     }
 
-    /** Returns whether the user with the given id is using a mod. */
     public static boolean isModded(int id) {
-        return SSUsers.containsKey(id) || player.id == id; // of course you are a modded player
+        return SSUsers.containsKey(id) || (player != null && player.id == id);
     }
 
-    /** Returns the user type with the given id: host, no data, mod or vanilla. */
     public static String type(int id) {
         if (hostID == id) return "trace.type.host";
         if (!hasData && net.client()) return "trace.type.nodata";
         return isModded(id) ? "trace.type.mod" : "trace.type.vanilla";
     }
 
-    /** Returns the user type with subtitle. */
     public static String tooltip(int id) {
-        if (player.id == id) return "@trace.type.self";
+        if (player != null && player.id == id) return "@trace.type.self";
         String sub = SSUsers.get(id);
         return bundle.get(type(id)) + (sub != null ? "\n" + sub : "");
     }
