@@ -28,12 +28,12 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew build-all.sh
 
-      - name: Build all versions
+      - name: Build
         run: ./build-all.sh
 
-      - name: Upload JARs to GitHub Release
+      - name: Upload JAR to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.jar
+          files: dist/Scheme-Size.jar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
