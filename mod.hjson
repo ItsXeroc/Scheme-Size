@@ -23,7 +23,7 @@ Original mod by [accent]xzxADIxzx[]. Port by [accent]Mithra[]. The original auth
  - CLaJ, keybinds, updater
  - Advanced console & rule setter
 '''
-version: 1.0.3
+version: 2.0.0
 minGameVersion: 156
 repo: ItsXeroc/Scheme-Size
 hidden: true
