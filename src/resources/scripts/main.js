@@ -1,11 +1,11 @@
-// it is really useful for development
 var mod = Vars.mods.getMod("scheme-size")
-var get = (pkg) => mod.loader.loadClass(pkg).newInstance()
+var get = (pkg) => null
 
-// mod.loader is null on mobile devices
-if (Vars.mobile) get = (pkg) => null;
+if (mod != null && mod.loader != null && !Vars.headless) {
+    get = (pkg) => mod.loader.loadClass(pkg).newInstance()
+}
 
-const SchemeMain = mod.main
+const SchemeMain = mod == null ? null : mod.main
 const SchemeVars = get("scheme.SchemeVars")
 const SchemeUpdater = get("scheme.SchemeUpdater")
 const ServerIntegration = get("scheme.ServerIntegration")
