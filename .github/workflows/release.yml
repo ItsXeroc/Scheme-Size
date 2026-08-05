@@ -25,15 +25,15 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Grant execute permission
+        run: chmod +x gradlew build-all.sh
 
-      - name: Build with Gradle
-        run: ./gradlew deploy
+      - name: Build all versions
+        run: ./build-all.sh
 
       - name: Upload JARs to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/libs/*.jar
+          files: dist/*.jar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

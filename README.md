@@ -10,12 +10,16 @@ QoL and admin tooling on top of a larger schematic limit: building helpers, rend
 
 - **Client only** - put the jar in `mods/`. Works on normal servers for QoL (PC and mobile).
 - **With server mod** - same jar in `config/mods/` on the server. Admin tools sync in multiplayer when you are not hosting. Needs admin rank.
-- Mindustry **v156+**. Vanilla recommended. Mobile is supported (use the release jar, not Desktop-only).
+- Mindustry **v158+**. Vanilla recommended. Mobile is supported (use the release jar, not Desktop-only).
+
+Repo: https://github.com/ItsXeroc/Scheme-Size
 
 ## Build
 
 ```bash
-./gradlew jar
+./build-all.sh
+# or one target:
+./gradlew deploy -PmindustryVersion=v158.1 -PgameBuild=158
 ```
 
-Jar: `build/libs/Scheme-Size.jar` (desktop + android via `./gradlew deploy`)
+Jars: `dist/Scheme-Size-v156.jar`, `Scheme-Size-v158.jar`, `Scheme-Size-v159.jar`

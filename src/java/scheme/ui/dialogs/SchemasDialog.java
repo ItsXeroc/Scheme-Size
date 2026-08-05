@@ -9,10 +9,10 @@ import arc.util.Reflect;
 import mindustry.game.Schematic;
 import mindustry.gen.Icon;
 import mindustry.gen.Tex;
-import mindustry.ui.FileChooser;
 import mindustry.ui.Styles;
 import mindustry.ui.dialogs.BaseDialog;
 import mindustry.ui.dialogs.SchematicsDialog;
+import scheme.compat.GameCompat;
 import scheme.moded.ModedSchematics;
 
 import static arc.Core.*;
@@ -60,7 +60,7 @@ public class SchemasDialog extends SchematicsDialog {
                         }
                     }).disabled(b -> app.getClipboardText() == null || !app.getClipboardText().startsWith(schematicBaseStart)).row();
 
-                    button(t, "importfile", Icon.download, () -> FileChooser.open(schematicExtension).submit(file -> {
+                    button(t, "importfile", Icon.download, () -> GameCompat.openFile(schematicExtension, file -> {
                         try {
                             imported(ModedSchematics.read(file));
                         } catch (Throwable error) {
@@ -68,8 +68,8 @@ public class SchemasDialog extends SchematicsDialog {
                         }
                     })).row();
 
-                    button(t, "importimage", Icon.image, () -> { // do not replace with :: because null pointer
-                        FileChooser.open("png").submit(file -> parser.show(file));
+                    button(t, "importimage", Icon.image, () -> {
+                        GameCompat.openFile("png", file -> parser.show(file));
                     }).row();
 
                     if (!steam) return;
