@@ -1,18 +1,35 @@
 # !Scheme Size
 
-Custom port of [Scheme Size](https://github.com/xzxADIxzx/Scheme-Size) by **Mithra**.
+Custom port by **Mithra**, based on [Scheme Size](https://github.com/xzxADIxzx/Scheme-Size) (`xzxADIxzx`). Unofficial - the original author is not involved.
 
-Original author: **xzxADIxzx**. Unofficial port - they are not involved.
+You already know what Scheme Size is. This page is about **what this port changes**.
 
-## What it does
+## What’s different here
 
-QoL and admin tooling on top of a larger schematic limit: building helpers, renderer options, AI, keybinds, CLaJ, console, rule setter.
+### Server-side admin tools
 
-- **Client only** - put the jar in `mods/`. Works on normal servers for QoL (PC and mobile).
-- **With server mod** - same jar in `config/mods/` on the server. Admin tools sync in multiplayer when you are not hosting. Needs admin rank.
-- Mindustry **v156+** (one jar for 156–159). Vanilla recommended.
+In the original ports, most admin actions (fill, items, units, teleport, rules, …) only worked if you were the local host. Remote clients on a dedicated server were stuck.
 
-Repo: https://github.com/ItsXeroc/Scheme-Size
+This build ships **server handlers in the same jar**. Put it in `config/mods` on the server and on the client. Admins can use **Scheme Net** over the network without hosting locally. Actions require real admin rank (`player.admin`).
+
+Without the server jar, it still works as a normal client QoL mod.
+
+### Headless / dedicated server
+
+Older Scheme Size jars crash when loaded on a dedicated server (`schematics` null, `netClient` null, `main.js` touching a null loader). This port is safe on headless: server-only init path, no client UI/scripts on the server.
+
+### One jar, modern builds
+
+Single `Scheme-Size.jar` for Mindustry **156–159** (desktop + mobile). API differences (file chooser, labels, …) go through a small compat layer instead of shipping three separate builds
+
+## Install
+
+1. Download `Scheme-Size.jar` from [Releases](https://github.com/ItsXeroc/Scheme-Size/releases)
+2. Client: `mods/`
+3. For networked admin tools: same jar in server `config/mods/`
+4. Enable Admin Tools → Auto or Scheme Net (admin only)
+
+
 
 ## Build
 
@@ -20,4 +37,10 @@ Repo: https://github.com/ItsXeroc/Scheme-Size
 ./build-all.sh
 ```
 
-Jar: `dist/Scheme-Size.jar`
+Output: `dist/Scheme-Size.jar`
+
+## Credit
+
+- Original mod: [xzxADIxzx/Scheme-Size](https://github.com/xzxADIxzx/Scheme-Size)
+- This port: Mithra ([ItsXeroc/Scheme-Size](https://github.com/ItsXeroc/Scheme-Size))
+
