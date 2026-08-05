@@ -1,0 +1,174 @@
+package scheme;
+
+import arc.Core;
+import arc.Events;
+import arc.struct.IntMap;
+import arc.util.Log;
+import arc.util.Strings;
+import arc.util.Time;
+import mindustry.game.EventType.*;
+import mindustry.gen.Call;
+import mindustry.io.JsonIO;
+import scheme.tools.DisabledTools;
+
+import static arc.Core.*;
+import static mindustry.Vars.*;
+
+/**
+ * Package manager for getting player data from the server.
+ * <p>
+ * How it works:
+ * When a player connects to a server it will send a SendMeSubtitle packet,
+ * players with this mod will send a MySubtitle packet in response.
+ * Then the server will send a Subtitles packet to all connections
+ * containing a list of ids and subtitles of players who use this mod.
+ * </p>
+ * Reference implementation: server region in {@link ServerIntegration#load()}
+ */
+@SuppressWarnings("unchecked")
+public class ServerIntegration {
+
+    /** List of user ids that use this mod. */
+    public static IntMap<String> SSUsers = new IntMap<>(8);
+
+    /** Host's player id. If you're joining a headless server it will be -1. */
+    public static int hostID = -1;
+
+    /** Whether the player received subtitles from the server. */
+    public static boolean hasData;
+
+    public static boolean schemeAvailable;
+
+    public static void load() {
+        // region Server
+
+        Events.on(PlayerJoin.class, event -> Call.clientPacketReliable(event.player.con, "SendMeSubtitle", player == null ? null : String.valueOf(player.id)));
+        Events.on(PlayerLeave.class, event -> {
+            if (event.player != null/* how? */) SSUsers.remove(event.player.id);
+        });
+
+        netServer.addPacketHandler("MySubtitle", (target, args) -> {
+            try {
+                if (args != null && args.length() > 256) return;
+                SSUsers.put(target.id, args);
+                IntMap<String> single = new IntMap<>(1);
+                single.put(target.id, args);
+                Call.clientPacketReliable("Subtitles", JsonIO.write(single));
+
+                if (SSUsers.size > 1) {
+                    Call.clientPacketReliable(target.con, "Subtitles", JsonIO.write(SSUsers));
+                }
+            } catch (Exception e) {
+                Log.warn("Invalid MySubtitle packet from @", target.name, e);
+            }
+        });
+
+        // schemesize.available is handled by ServerSide
+
+        // endregion
+        // region Client
+
+        Events.run(HostEvent.class, ServerIntegration::clear);
+        Events.run(ClientPreConnectEvent.class, ServerIntegration::clear);
+
+        netClient.addPacketHandler("SendMeSubtitle", args -> {
+            try {
+                Call.serverPacketReliable("MySubtitle", settings.getString("subtitle"));
+                if (args != null) hostID = Strings.parseInt(args, -1);
+            } catch (Exception e) {
+                Log.warn("Invalid SendMeSubtitle packet", e);
+            }
+        });
+
+        netClient.addPacketHandler("Subtitles", args -> {
+            try {
+                if (args == null || args.isEmpty()) return;
+                IntMap<String> received = JsonIO.read(IntMap.class, args);
+                if (received == null) return;
+                for (var entry : received) {
+                    if (entry.value == null || entry.value.isEmpty()) SSUsers.remove(entry.key);
+                    else SSUsers.put(entry.key, entry.value);
+                }
+                hasData = true;
+            } catch (Exception e) {
+                Log.warn("Invalid Subtitles packet", e);
+            }
+        });
+
+        netClient.addBinaryPacketHandler("schemesize.available", (data) -> {
+            try {
+                if (data == null || data.length == 0) return;
+                schemeAvailable = true;
+                DisabledTools.clear();
+                DisabledTools.set(data);
+                if (settings.getInt("adminsway", scheme.tools.admins.AdminsTools.implementations.length) >= scheme.tools.admins.AdminsTools.implementations.length
+                        || settings.getInt("adminsway", 0) == 1) {
+                    scheme.SchemeVars.admins = scheme.ui.dialogs.AdminsConfigDialog.detectTools();
+                }
+            } catch (Exception e) {
+                Log.warn("Invalid schemesize.available packet", e);
+            }
+        });
+
+        Events.on(WorldLoadEndEvent.class, e -> {
+            if(!net.client())DisabledTools.clear();
+            initHost();
+
+            Runnable[] task = new Runnable[1];
+
+            task[0] = () -> {
+                if(!state.isGame()){
+                    Time.runTask(60f, task[0]);
+                    return;
+                }
+
+                Core.app.post(() -> {
+                    Call.serverBinaryPacketReliable(
+                        "schemesize.available",
+                        new byte[]{0}
+                    );
+                });
+            };
+
+            task[0].run();
+        });
+
+        // endregion
+    }
+
+    /** Clears all data about users. */
+    public static void clear() {
+        SSUsers.clear();
+        hostID = -1;
+        hasData = false;
+        schemeAvailable = false;
+        DisabledTools.clear();
+    }
+
+    /** Called after world load when player.id is assigned. */
+    public static void initHost() {
+        if (!net.client()) {
+            hasData = true;
+            SSUsers.put(player.id, settings.getString("subtitle"));
+        }
+    }
+
+    /** Returns whether the user with the given id is using a mod. */
+    public static boolean isModded(int id) {
+        return SSUsers.containsKey(id) || player.id == id; // of course you are a modded player
+    }
+
+    /** Returns the user type with the given id: host, no data, mod or vanilla. */
+    public static String type(int id) {
+        if (hostID == id) return "trace.type.host";
+        if (!hasData && net.client()) return "trace.type.nodata";
+        return isModded(id) ? "trace.type.mod" : "trace.type.vanilla";
+    }
+
+    /** Returns the user type with subtitle. */
+    public static String tooltip(int id) {
+        if (player.id == id) return "@trace.type.self";
+        String sub = SSUsers.get(id);
+        return bundle.get(type(id)) + (sub != null ? "\n" + sub : "");
+    }
+}
