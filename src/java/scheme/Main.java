@@ -34,13 +34,15 @@ public class Main extends Mod {
 
     @Override
     public void init() {
-        ServerIntegration.load();
-        ServerSide.load();
-
         if (headless) {
+            ServerIntegration.load();
+            ServerSide.load();
             log("Server-side loaded. Put this mod on the server for multiplayer admin tools.");
             return;
         }
+
+        ServerIntegration.load();
+        ServerSide.load();
 
         SchemeVars.load();
         SchemeUpdater.load();

@@ -89,7 +89,7 @@ public class AdminsConfigDialog extends BaseDialog {
             if (entry.key.startsWith("mdrk.")) return new Mindurka();
         }
 
-        if (serverUtils.serverNameEqual("Mindurka")) return new Mindurka();
+        if (serverUtils != null && serverUtils.serverNameEqual("Mindurka")) return new Mindurka();
 
         return new Internal();
     }

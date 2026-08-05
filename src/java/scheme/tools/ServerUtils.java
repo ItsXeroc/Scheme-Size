@@ -9,24 +9,26 @@ import mindustry.game.EventType;
 public class ServerUtils {
     String lastServer;
 
-    public void init(){
+    public void init() {
         Events.on(EventType.ClientServerConnectEvent.class, event -> lastServer = event.ip + ":" + event.port);
     }
 
-    public Boolean serverNameEqual(String name){
-        if(!Vars.net.client() || lastServer == null) return null;
+    public boolean serverNameEqual(String name) {
+        if (!Vars.net.client() || lastServer == null || name == null) return false;
 
-        try{
+        try {
+            if (Vars.serverCacheFile == null || !Vars.serverCacheFile.exists()) return false;
             JsonValue servers = new JsonReader().parse(Vars.serverCacheFile);
-            for(JsonValue server = servers.child; server != null; server = server.next){
+            for (JsonValue server = servers.child; server != null; server = server.next) {
                 String ip = server.getString("ip", "");
                 int port = server.getInt("port", Vars.port);
-                if(lastServer.equals(ip + ":" + port)){
-                    return server.getString("name", null).equals(name);
+                if (lastServer.equals(ip + ":" + port)) {
+                    String serverName = server.getString("name", "");
+                    return name.equals(serverName);
                 }
             }
-        }catch(Exception ignored){}
+        } catch (Exception ignored) {}
 
-        return null;
+        return false;
     }
 }
