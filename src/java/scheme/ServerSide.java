@@ -2,9 +2,12 @@ package scheme;
 
 import arc.Events;
 import arc.math.geom.Geometry;
+import arc.struct.ObjectSet;
 import arc.util.Log;
 import arc.util.Strings;
 import mindustry.content.Blocks;
+import mindustry.ctype.Content;
+import mindustry.ctype.ContentType;
 import mindustry.game.EventType.*;
 import mindustry.game.Rules;
 import mindustry.game.Team;
@@ -172,6 +175,12 @@ public class ServerSide {
             Call.setRules(state.rules);
         });
 
+        packet("ruleobjectset", (player, args) -> {
+            if (args.length < 2 || disabled(DisabledTools.RULESETTER)) return;
+            setRuleObjectSet(state.rules, args[0], args);
+            Call.setRules(state.rules);
+        });
+
         Log.infoTag("Scheme", "Server-side admin handlers registered.");
     }
 
@@ -253,6 +262,33 @@ public class ServerSide {
             else field.set(target, value);
         } catch (Exception e) {
             Log.warn("Failed to set rule @ = @: @", name, value, e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void setRuleObjectSet(Rules rules, String fieldName, String[] args) {
+        try {
+            Field field = Rules.class.getField(fieldName);
+            Object val = field.get(rules);
+            if (!(val instanceof ObjectSet<?>)) return;
+            ObjectSet<Object> set = (ObjectSet<Object>) val;
+            if (args[1].equals("clear")) {
+                set.clear();
+                return;
+            }
+            if (args.length < 3) return;
+            int ordinal = Strings.parseInt(args[1], -1);
+            if (ordinal < 0 || ordinal >= ContentType.all.length) return;
+            ContentType ct = ContentType.all[ordinal];
+            set.clear();
+            for (String rawId : args[2].split(",")) {
+                int id = Strings.parseInt(rawId, -1);
+                if (id < 0) continue;
+                Content item = content.getByID(ct, id);
+                if (item != null) set.add(item);
+            }
+        } catch (Exception e) {
+            Log.warn("Failed to set rule object set @: @", fieldName, e);
         }
     }
 

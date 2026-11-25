@@ -20,28 +20,30 @@
 package com.xpdustry.claj.client;
 
 import java.nio.ByteBuffer;
-import java.util.concurrent.ExecutorService;
-
 import arc.Core;
-import arc.net.NetListener;
-import arc.net.Server;
+import arc.func.Cons;
+import arc.net.*;
+import arc.struct.ObjectMap;
 import arc.util.*;
 import arc.util.io.ByteBufferInput;
 import arc.util.io.ByteBufferOutput;
 
 import mindustry.Vars;
 import mindustry.gen.Call;
+import mindustry.net.ArcNetProvider;
 import mindustry.net.ArcNetProvider.PacketSerializer;
 import mindustry.net.Net.NetProvider;
 import mindustry.net.NetworkIO;
+import mindustry.net.Packets.Connect;
 
 import com.xpdustry.claj.api.*;
-import com.xpdustry.claj.common.packets.ConnectionPacketWrapPacket;
+import com.xpdustry.claj.common.packets.ConnectionPayloadPacket;
 import com.xpdustry.claj.common.status.*;
 
 
 public class MindustryClajProvider implements ClajProvider {
-  public static final NetProvider mindustryProvider;
+  public static final ArcNetProvider mindustryProvider;
+  public static final Client mindustryClient;
   public static final Server mindustryServer;
   public static final NetListener mindustryServerDispatcher;
   public static final PacketSerializer mindustrySerializer;
@@ -50,25 +52,55 @@ public class MindustryClajProvider implements ClajProvider {
   /** CLaJ type is {@code "Mindustry"} for this implementation. */
   public static final ClajType implType;
 
+  private static ByteBuffer magicPacket;
+
   static {
-    NetProvider provider = Reflect.get(Vars.net, "provider");
-    if (Vars.steam) provider = Reflect.get(provider, "provider");
-    mindustryProvider = provider;
-    mindustryServer = Reflect.get(mindustryProvider, "server");
-    mindustryServerDispatcher = Reflect.get(mindustryServer, "dispatchListener");
+    try {
+      NetProvider provider = Reflect.get(Vars.net, "provider");
+      // Loop over all providers in case of a mod already hooking it
+      while (!(provider instanceof ArcNetProvider anp)) {
+        provider = Reflect.get(provider, "provider");
+      }
+      mindustryProvider = anp;
+    } catch (Exception e) { throw new RuntimeException("Unable to find the ArcNetProvider", e); }
+    mindustryClient = Reflect.get(mindustryProvider, "client");
+    mindustryServer = Reflect.get(mindustryProvider, "server"); // Safe, we already know that is ArcNetProvider
+    mindustryServerDispatcher = Reflect.get(mindustryServer, "dispatchListener"); // Safe, never changed
     mindustrySerializer = new PacketSerializer();
-    clajVersion = ClajVersion.of("2.4.0");
+    clajVersion = ClajVersion.of("2.4.5");
     implType = ClajType.of("Mindustry");
+
+    // Hook Connect listener, so that magic join packet is send before ConnectPacket
+    // We really need a method to get a listener...
+    @SuppressWarnings("unchecked")
+    Cons<Connect> connect = (Cons<Connect>)Reflect.<ObjectMap<Class<?>, Cons<?>>>get(Vars.net, "clientListeners")
+                                                  .get(Connect.class);
+    if (connect != null) {
+      Vars.net.handleClient(Connect.class, p -> {
+        if (magicPacket != null) Vars.net.send(magicPacket, true);
+        magicPacket = null;
+        connect.get(p);
+      });
+    }
+
+    // Save network errors for bug report
+    Cons<Throwable> last = ArcNet.errorHandler;
+    ArcNet.errorHandler = e -> {
+      ClajProxy proxy = Claj.get().proxies.get();
+      // Avoid saving every errors
+      if (proxy.isConnecting() || proxy.roomCreated()) ClajReport.addError(e);
+      last.get(e);
+    };
   }
 
   @Override
-  public void postTask(Runnable task) {
-    Core.app.post(task);
+  public void postCallback(Runnable task) {
+    if (task != null) Core.app.post(task);
   }
 
   @Override
-  public ExecutorService getExecutor() {
-    return Vars.mainExecutor;
+  public void postConnect(Runnable task) {
+    if (task != null) Vars.mainExecutor.submit(task);
   }
 
   @Override
@@ -78,9 +110,10 @@ public class MindustryClajProvider implements ClajProvider {
 
   @Override
   public void handleProxyError(ClajProxy proxy, Throwable error) {
+    ClajReport.addError(error);
     if (proxy.roomCreated()) {
-      Vars.ui.showException("@claj.room.error", error);
       proxy.quietErrors = true;
+      postCallback(() -> Vars.ui.showException("@claj.room.error", error));
     }
     Log.err("Error while hosting the room", error);
   }
@@ -107,7 +140,8 @@ public class MindustryClajProvider implements ClajProvider {
 
   @Override
   public ByteBuffer writeRoomState(ClajProxy proxy) {
-    return NetworkIO.writeServerData();
+    // Not thread-safe, but in theory it doesn't matter.
+    return (ByteBuffer)NetworkIO.writeServerData().flip();
   }
 
   @SuppressWarnings("unchecked")
@@ -121,24 +155,44 @@ public class MindustryClajProvider implements ClajProvider {
     Vars.logic.reset();
     Vars.net.reset();
     Vars.netClient.beginConnecting();
-    Vars.net.connect(host, port, () -> {
+    magicPacket = joinPacket;
+    Vars.net.connect(host, port, () -> Core.app.post(() -> {
       if (!Vars.net.client()) return;
       if (success != null) success.run();
-      //TODO: Override Connect listener to send it before ConnectPacket?
-      if (joinPacket != null) Vars.net.send(joinPacket, true);
-    });
+      if (magicPacket != null) Vars.net.send(magicPacket, true); // In case of
+      magicPacket = null;
+    }));
   }
 
   @Override
-  public ConnectionPacketWrapPacket.Serializer getPacketWrapperSerializer() {
-    return new ConnectionPacketWrapPacket.Serializer() {
+  public ConnectionPayloadPacket.Serializer getPacketWrapperSerializer() {
+    return new ConnectionPayloadPacket.Serializer() {
       @Override
-      public void read(ConnectionPacketWrapPacket packet, ByteBufferInput read) {
-        packet.object = mindustrySerializer.read(read.buffer);
+      public void read(ConnectionPayloadPacket packet, ByteBufferInput read) {
+        packet.object = null;
+        if (Vars.net.server()) {
+          try { packet.object = mindustrySerializer.read(read.buffer); }
+          catch (Exception e) {
+            String msg = "Dropped an invalid packet from connection @";
+            // Ignore, to not disconnect the host for a client's fault
+            ClajReport.addError(new RuntimeException(Strings.format(msg, packet.conID), e));
+            Log.err(msg + ": @.", packet.conID, e);
+          }
+        }
+        // Alert a non fully reads packet
+        if (!read.buffer.hasRemaining()) return;
+        if (packet.object != null) {
+          String msg = "Dropped packet @ from connection @ because @ bytes was remaining";
+          Object[] args = {packet.object.getClass().getName(), packet.conID, read.buffer.remaining()};
+          ClajReport.addError(new RuntimeException(Strings.format(msg, args)));
+          Log.err(msg + ".", args);
+          packet.object = null;
+        }
+        read.buffer.position(read.buffer.limit());
       }
 
       @Override
-      public void write(ConnectionPacketWrapPacket packet, ByteBufferOutput write) {
+      public void write(ConnectionPayloadPacket packet, ByteBufferOutput write) {
         mindustrySerializer.write(write.buffer, packet.object);
       }
     };
@@ -154,8 +208,10 @@ public class MindustryClajProvider implements ClajProvider {
     Call.sendMessage("[scarlet][[CLaJ Server]:[] " +
       Core.bundle.get("claj.message." + Strings.camelToKebab(message.name())));
 
+    if (message != MessageType.serverClosing) return;
+    long roomId = proxy.roomId();
     Timer.schedule(() -> {
-      if (!proxy.roomCreated()) return;
+      if (!proxy.roomCreated() || proxy.roomId() != roomId) return;
       proxy.closeRoom(CloseReason.serverClosed);
     }, 5);
   }

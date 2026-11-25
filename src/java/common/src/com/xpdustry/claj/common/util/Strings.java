@@ -209,6 +209,7 @@ public class Strings extends arc.util.Strings {
     return compareVersion(currentVersion, newVersion, 0) < 0;
   }
 
+  /** @return whether {@code newVersion} is greater than {@code currentVersion}. */
   public static boolean isVersionAtLeast(String currentVersion, String newVersion, int maxDepth) {
     return compareVersion(currentVersion, newVersion, maxDepth) < 0;
   }
@@ -342,7 +343,6 @@ public class Strings extends arc.util.Strings {
     return Structs.max(list, String::length);
   }
 
-  //TODO: need to merge these three methods in one StringBuilder
   public static String normalize(String str) {
     return stripGlyphs(stripColors(str)).trim();
   }
@@ -600,19 +600,19 @@ public class Strings extends arc.util.Strings {
   }
 
   public static String formatBytes(long v) {
-    return formatSize(v, "B");
+    return formatSize(v, 1000, "B");
   }
 
-  public static String formatSize(long value, String unit) {
-    boolean negated = false;
+  public static String formatSize(long value, int base, String unit) {
+    String negated = "";
     if (value < 0) {
-      negated = true;
+      negated = "-";
       value = -value;
     }
-    if (value < 1024) return (negated ? "-" + value : value) + " " + unit;
-    int z = (63 - Long.numberOfLeadingZeros(value)) / 10;
-    return String.format((negated ? "-%.1f %s" : "%.1f %s") + unit,
-                         Math.scalb((double)value, z * -10), " KMGTPE".charAt(z));
+    if (value < base) return negated + value + ' ' + unit;
+    int z = (int)(Math.log(value) / Math.log(base));
+    double v = value / Math.pow(base, z);
+    return negated + (int)v + '.' + (int)((v * 10) % 10) + ' ' + "KMGTPE".charAt(z-1) + unit;
   }
 
   private static final Object[][] TIME_PERIODS = {
@@ -652,5 +652,33 @@ public class Strings extends arc.util.Strings {
     }
 
     return builder.toString();
+  }
+
+  public static String wordTruncate(String str, int length) { return wordTruncate(str, length, ""); }
+  /** https://stackoverflow.com/a/17188686 */
+  public static String wordTruncate(String str, int length, String ellipsis) {
+    if (str.length() <= length) return str;
+    String result = str.substring(0, length);
+    if (str.charAt(length) != ' ') result = result.substring(0, result.lastIndexOf(" "));
+    return result + ellipsis;
+  }
+
+  /** @return the parsed primitive object, else {@code null}. */
+  @SuppressWarnings("unchecked")
+  public static <T> T parsePrimitive(Class<T> type, String value) {
+    if (type == Boolean.class) {
+      if (isTrue(value)) return (T)Boolean.TRUE;
+      if (isFalse(value)) return (T)Boolean.FALSE;
+      return null;
+    }
+    if (type == Byte.class) return (T)Byte.valueOf(value);
+    if (type == Short.class) return (T)Short.valueOf(value);
+    if (type == Integer.class) return (T)Integer.valueOf(value);
+    if (type == Long.class) return (T)Long.valueOf(value);
+    if (type == Float.class) return (T)Float.valueOf(value);
+    if (type == Double.class) return (T)Double.valueOf(value);
+    if (type == Character.class) return (T)(Character)value.charAt(0);
+    if (type == String.class) return (T)value;
+    return null;
   }
 }

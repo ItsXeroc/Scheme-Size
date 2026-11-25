@@ -56,6 +56,7 @@ public class SchemeVars {
     public static HudFragment hudfrag;
     public static PlayerListFragment listfrag;
     public static ShortcutFragment shortfrag;
+    public static ConsoleFragment consolefrag;
     public static CoreInfoFragment corefrag;
 
     public static ServerUtils serverUtils;
@@ -106,7 +107,6 @@ public class SchemeVars {
             updateContent();
             if (settings.getInt("adminsway", AdminsTools.implementations.length) >= AdminsTools.implementations.length) admins = AdminsConfigDialog.detectTools();
         });
-        Events.on(EventType.ClientCreateEvent.class,event ->updateContent());
         // m_schematics is created in Main to prevent dual loading
         m_input = mobile ? new ModedMobileInput() : new ModedDesktopInput();
 
@@ -133,6 +133,7 @@ public class SchemeVars {
         hudfrag = new HudFragment();
         listfrag = new PlayerListFragment();
         shortfrag = new ShortcutFragment();
+        consolefrag = new ConsoleFragment();
         corefrag = new CoreInfoFragment();
 
         serverUtils = new ServerUtils();
@@ -141,13 +142,18 @@ public class SchemeVars {
         initContent();
     }
     private static void updateContent(){
-
         units.refresh();
         builds.refresh();
 
-        unit = new ContentSelectDialog<>("@select.unit", content.units(), 0, 100, 1, value -> value == 0 ? "@select.unit.clear" : bundle.format("select.units", value));
-        effect = new ContentSelectDialog<>("@select.effect", content.statusEffects(), 0, 500 * 3600, 60, value -> value == 0 ? "@select.effect.clear" : bundle.format("select.seconds", value / 60f));
-        item = new ContentSelectDialog<>("@select.item", content.items(), -1000000, 1000000, 500, value -> value == 0 ? "@select.item.clear" : bundle.format("select.items", UI.formatAmount(value.longValue())));
+        unit = new ContentSelectDialog<>("@select.unit", content.units(), 0, 100, 1, value -> value == 0 ? "@select.unit.clear" : unitName("select.units"));
+        effect = new ContentSelectDialog<>("@select.effect", content.statusEffects(), 0, 500 * 3600, 60, value -> value == 0 ? "@select.effect.clear" : unitName("select.seconds"));
+        effect.inputScale = 60f;
+        effect.inputFloor = 0f;
+        item = new ContentSelectDialog<>("@select.item", content.items(), -1000000, 1000000, 500, value -> value == 0 ? "@select.item.clear" : unitName("select.items"));
+    }
+
+    private static String unitName(String key) {
+        return bundle.format(key, "").trim();
     }
     private  static void initContent(){
         serverUtils.init();

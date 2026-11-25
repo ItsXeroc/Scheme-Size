@@ -20,7 +20,7 @@ Older Scheme Size jars crash when loaded on a dedicated server (`schematics` nul
 
 ### One jar, modern builds
 
-Single `Scheme-Size.jar` for Mindustry **156–159** (desktop + mobile). API differences (file chooser, labels, …) go through a small compat layer instead of shipping three separate builds
+Single `Scheme-Size.jar` for Mindustry **160+** (desktop + mobile). API differences are handled cleanly without shipping separate builds.
 
 ## Install
 

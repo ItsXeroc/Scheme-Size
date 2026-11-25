@@ -38,13 +38,15 @@ public interface AdminsTools {
 
     String keyName();
 
-    void manageRuleBool(boolean value, String name);
+    boolean manageRuleBool(boolean value, String name);
 
-    void manageRuleStr(String value, String name);
+    boolean manageRuleStr(String value, String name);
 
-    void manageTeamRuleBool(int teamId, boolean value, String name);
+    boolean manageTeamRuleBool(int teamId, boolean value, String name);
 
-    void manageTeamRuleStr(int teamId, String value, String name);
+    boolean manageTeamRuleStr(int teamId, String value, String name);
+
+    boolean manageRuleObjectSet(String fieldName, arc.struct.ObjectSet<?> value);
 
     void manageUnit();
 
@@ -68,7 +70,7 @@ public interface AdminsTools {
 
     void teleport(Position pos);
 
-    default void teleport(Boolean isButton){teleport(getTeleportPosition(isButton));}
+    default void teleport(boolean isButton){teleport(getTeleportPosition(isButton));}
 
     default Position getTeleportPosition(boolean isButton) {
         if (mobile || isButton) return PositionBuild.GetPosition(camera.position.x,camera.position.y);
@@ -79,7 +81,7 @@ public interface AdminsTools {
         teleport(getTeleportPosition(false));
     }
 
-    default void deletePlyaer(){
+    default void deletePlayer(){
         Position mousePostion = PositionBuild.GetPosition(player.mouseX(),player.mouseY);
         Groups.player.each(player -> {
             float distance = PositionBuild.GetPosition(player.x,player.y).dst(mousePostion);
@@ -101,9 +103,9 @@ public interface AdminsTools {
 
     boolean unusable();
 
-    default int fixAmount(Item item, Float amount) {
+    default int fixAmount(Item item, float amount) {
         int items = player.core().items.get(item);
-        return amount == 0f || items + amount < 0 ? -items : amount.intValue();
+        return amount == 0f || items + amount < 0 ? -items : (int) amount;
     }
 
     default boolean canCreate(Team team, UnitType type) {

@@ -27,6 +27,7 @@ import java.nio.channels.Selector;
 import arc.func.Cons;
 import arc.net.ArcNetException;
 import arc.net.Client;
+import arc.net.Connection;
 import arc.net.DcReason;
 import arc.net.FrameworkMessage;
 import arc.struct.LongMap;
@@ -38,14 +39,14 @@ import arc.util.io.ByteBufferInput;
 import com.xpdustry.claj.common.ClajNet;
 import com.xpdustry.claj.common.ClajPackets.Disconnect;
 import com.xpdustry.claj.common.net.ClientReceiver;
+import com.xpdustry.claj.common.net.NetListenerFilter;
 import com.xpdustry.claj.common.packets.*;
 import com.xpdustry.claj.common.status.*;
 
 
-// FIXME: see ClajPingerManager comment
 /**
- * Note that {@link #pingHost}, {@link #requestRoomList} and {@link #joinRoom} are async operations.<br>
- * If one of them are called while another is running, the last one is canceled.
+ * Note that {@link #pingHost}, {@link #requestRoomList} and {@link #joinRoom} are non-blocking operations. <br>
+ * But if one of them are called while another is running, the last one is canceled.
  */
 public class ClajPinger extends Client {
   public static final short NO_PASSWORD = -1;
@@ -58,6 +59,7 @@ public class ClajPinger extends Client {
 
   protected final ClajProvider provider;
   protected final ClientReceiver receiver;
+  protected final Selector selector;
   protected String connectHost;
   protected int connectPort;
   protected volatile boolean shutdown = true, starting, connecting;
@@ -76,7 +78,7 @@ public class ClajPinger extends Client {
   protected Cons<ByteBuffer> joinSuccess;
   protected Cons<RejectReason> joinDenied;
   protected Cons<Exception> joinFailed;
-  protected RoomJoinRequestPacket lastRequest;
+  protected ByteBuffer lastRequest;
   protected volatile long requestedRoom = ClajProxy.UNCREATED_ROOM;
   protected volatile boolean joining;
 
@@ -89,11 +91,15 @@ public class ClajPinger extends Client {
     super(8192, 8192, new Serializer());
     ((Serializer)getSerialization()).set(this);
     this.provider = provider;
-    this.receiver = new ClientReceiver(this, null); // no need to delegate to the main thread
+    this.receiver = new ClientReceiver(this, NetListenerFilter.noIdleFilter);
+    this.selector = Reflect.get(Client.class, this, "selector");
 
-    receiver.handle(Disconnect.class, ignored -> {
+    receiver.handle(Disconnect.class, _ -> {
       Throwable error = getLastProtocolError();
-      if (error != null) provider.handlePingerError(this, error);
+      if (error != null) {
+        Reflect.set(Connection.class, this, "lastProtocolError", null);
+        provider.handlePingerError(this, error);
+      }
       failed(error);
     });
 
@@ -127,8 +133,8 @@ public class ClajPinger extends Client {
   public void run() {
     shutdown = starting = false;
     try { super.run(); }
-    catch (ClosedSelectorException e) {}
-    catch (ArcNetException e) {} // Already handled by disconnect event
+    catch (ClosedSelectorException _) {}
+    catch (ArcNetException _) {} // Already handled by disconnect event
     catch (Exception e) {
       provider.handlePingerError(this, e);
       failed(e);
@@ -153,13 +159,12 @@ public class ClajPinger extends Client {
     shutdown = true;
   }
 
-  @SuppressWarnings("resource")
   @Override
   public void close() {
     if (canceling) {
       close(DcReason.closed);
       // Makes #close() doesn't wait for 'updateLock', which will makes #connect() cancelable
-      Reflect.<Selector>get(Client.class, this, "selector").wakeup();
+      selector.wakeup();
     } else super.close();
   }
 
@@ -210,8 +215,8 @@ public class ClajPinger extends Client {
   }
 
   // Helpers
-  protected <T> void postTask(Cons<T> consumer, T object) { postTask(() -> consumer.get(object)); }
-  protected void postTask(Runnable run) { provider.postTask(run); }
+  protected <T> void postTask(Cons<T> consumer, T object) { postCallback(() -> consumer.get(object)); }
+  protected void postCallback(Runnable run) { provider.postCallback(run); }
 
   public boolean isRequestTimedOut() {
     return timeout > 0 && System.currentTimeMillis() >= timeout;
@@ -305,7 +310,7 @@ public class ClajPinger extends Client {
   }
 
   protected void runJoinSuccess() {
-    if (joinSuccess != null) postTask(joinSuccess, makeJoinPacket(lastRequest));
+    if (joinSuccess != null) postTask(joinSuccess, lastRequest);
     resetJoinState(null, null, null);
     close();
   }
@@ -347,7 +352,7 @@ public class ClajPinger extends Client {
   }
 
   protected void runInfoNotFound() {
-    if (infoNotFound != null) postTask(infoNotFound);
+    if (infoNotFound != null) postCallback(infoNotFound);
     resetInfoState(null, null, null);
     close();
   }
@@ -374,7 +379,7 @@ public class ClajPinger extends Client {
         return;
       }
     } else close();
-    //arc.util.Log.info("pinger: @, @, @", canceling, Thread.currentThread().getName(), System.currentTimeMillis());
+
     resetPingState(success, failed);
     setRequestTimeout(pingTimeout);
     pinging = true;
@@ -391,6 +396,7 @@ public class ClajPinger extends Client {
         return;
       }
     } else close();
+
     resetListState(rooms, failed);
     setRequestTimeout(listTimeout);
     listing = true;
@@ -418,6 +424,7 @@ public class ClajPinger extends Client {
         return;
       }
     } else close();
+
     resetJoinState(success, reject, failed);
     requestedRoom = roomId;
     setRequestTimeout(joinTimeout);
@@ -436,6 +443,7 @@ public class ClajPinger extends Client {
         return;
       }
     } else close();
+
     resetInfoState(info, notFound, failed);
     requestedRoom = roomId;
     setRequestTimeout(infoTimeout);
@@ -448,35 +456,34 @@ public class ClajPinger extends Client {
     sendUDP(FrameworkMessage.discoverHost);
   }
 
+  /** Packet ids for optimization */
+  private static final byte
+      rip = ClajNet.getId(RoomInfoRequestPacket.class), rlp = ClajNet.getId(RoomListRequestPacket.class),
+      rjp = ClajNet.getId(RoomJoinRequestPacket.class);
+
   protected void requestRoomInfo(long roomId) {
-    RoomInfoRequestPacket p = new RoomInfoRequestPacket();
+    RoomInfoRequestPacket p = ClajNet.newLocalPacket(rip);
     p.roomId = roomId;
     sendTCP(p);
   }
 
   protected void requestRoomList() {
-    RoomListRequestPacket p = new RoomListRequestPacket();
+    RoomListRequestPacket p = ClajNet.newLocalPacket(rlp);
     p.type = provider.getType();
     sendTCP(p);
   }
 
   protected void requestRoomJoin(long roomId, boolean withPassword, short password) {
-    RoomJoinRequestPacket p = new RoomJoinRequestPacket();
+    RoomJoinRequestPacket p = ClajNet.newLocalPacket(rjp);
     p.roomId = roomId;
     p.withPassword = withPassword && password != NO_PASSWORD;
     p.password = password;
     p.type = provider.getType();
-    lastRequest = p;
+    ByteBuffer buff = ByteBuffer.allocate(2 + RoomJoinRequestPacket.SIZE); // claj id + packet id + packet
+    getSerialization().write(buff, p.toJoinPacket());
+    lastRequest = (ByteBuffer)buff.flip();
     sendTCP(p);
   }
-
-  protected ByteBuffer makeJoinPacket(RoomJoinRequestPacket request) {
-    if (request == null) return null;
-    ByteBuffer buff = ByteBuffer.allocate(RoomJoinRequestPacket.SIZE);
-    getSerialization().write(buff, request.toJoinPacket()); // not thread-safe  // sure?
-    return (ByteBuffer)buff.flip();
-  }
-
 
   /** Modified serializer that reads only one packet type in {@linkplain ClajPinger#pinging pinging} mode. */
   protected static class Serializer extends ClajClientSerializer {

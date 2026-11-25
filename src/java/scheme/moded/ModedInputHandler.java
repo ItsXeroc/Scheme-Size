@@ -16,7 +16,6 @@ import mindustry.input.InputHandler;
 import mindustry.input.Placement;
 import mindustry.input.Placement.NormalizeDrawResult;
 import mindustry.world.Tile;
-import scheme.compat.GameCompat;
 import scheme.tools.BuildingTools.Mode;
 
 import static arc.Core.*;
@@ -75,7 +74,7 @@ public interface ModedInputHandler {
     default void drawSize(int x1, int y1, int x2, int y2, int maxLength) {
         String x = getSize(Math.abs(x1 - x2), maxLength);
         String y = getSize(Math.abs(y1 - y2), maxLength);
-        GameCompat.showLabel(x + ", " + y, 61252, 0.02f, x2 * tilesize + sizeX, y2 * tilesize + sizeY);
+        ui.showLabel(x + ", " + y, 61252, 0.02f, x2 * tilesize + sizeX, y2 * tilesize + sizeY, 0);
     }
 
     default String getSize(int size, int maxLength) {
@@ -105,9 +104,9 @@ public interface ModedInputHandler {
     }
 
     default void drawLocked(float x, float y) {
-        GameCompat.showLabel(bundle.format(
+        ui.showLabel(bundle.format(
                 Mathf.absin(25f, 1f) < .5f ? "locked.info" : "locked.bind",
                 Color.orange.cpy().lerp(Color.scarlet, Mathf.absin(3f, 1f))
-                ), 61252, 0.02f, x, y);
+                ),61252,0.02f,x,y,0);
     }
 }

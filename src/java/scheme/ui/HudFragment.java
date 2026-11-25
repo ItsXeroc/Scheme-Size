@@ -55,6 +55,9 @@ public class HudFragment {
         cursor = Tex.cursor;
     }};
 
+    /** Gamma panel is 150 wide with zero margin; a slider prefers 140, keep it inside the pane border. */
+    public static final float sliderWidth = 150f - 2 * 6f;
+
     public FlipButton mobiles = new FlipButton();
     public FlipButton building = new FlipButton();
 
@@ -64,7 +67,6 @@ public class HudFragment {
 
     public void build(Group parent) {
         Events.run(WorldLoadEvent.class, this::updateBlocks);
-        Events.run(UnlockEvent.class, this::updateBlocks);
         Events.run(UnlockEvent.class, this::updateBlocks);
         Events.run(ResizeEvent.class, () -> Time.run(10f, () -> { // idk why, but after resizing shortcut appears in the center of the screen
             if (shortfrag.visible) shortfrag.show(graphics.getWidth() - (int) Scl.scl(15f), graphics.getHeight() / 2);
@@ -96,8 +98,15 @@ public class HudFragment {
             cont.table(Tex.pane, pad -> {
                 pad.defaults().growX();
 
-                new TextSlider(0, 600, 20, 80, value -> bundle.format("gamma.range", GammaAI.range = value)).build(pad).row();
-                new TextSlider(0, 110, 10, 100, value -> bundle.format("gamma.speed", GammaAI.speed = value)).build(pad).row();
+                addClose(pad);
+                new TextSlider(0, 600, 20, 80, 1f, value -> {
+                    GammaAI.range = value;
+                    return "@gamma.range.name";
+                }).fieldWidth(44f).build(pad).width(sliderWidth).row();
+                new TextSlider(0, 110, 10, 100, 1f, value -> {
+                    GammaAI.speed = value;
+                    return "@gamma.speed.name";
+                }).fieldWidth(44f).build(pad).width(sliderWidth).row();
                 pad.table(mode -> {
                     setMove(mode, none);
                     setMove(mode, follow);
@@ -121,6 +130,7 @@ public class HudFragment {
             cont.visible(() -> ui.hudfrag.shown && !ui.minimapfrag.shown() && ai.ai instanceof NetMinerAI);
 
             cont.table(Tex.pane, pad -> {
+                addClose(pad);
                 pad.table(mode -> Events.run(UnitChangeEvent.class, () -> {
                     mode.clear();
                     mode.button(Icon.line, check, () -> NetMinerAI.priorityItem = null).checked(t -> NetMinerAI.priorityItem == null).size(37.5f);
@@ -204,8 +214,6 @@ public class HudFragment {
             }).get().color.a(0f); // hide on startup
         });
 
-        if (!settings.getBool("mobilebuttons") && !mobile) return;
-
         getCommandButton(cont -> { // Shortcut and cursed schematics button
             if (!SchemeUpdater.installed("test-utils")) // hardcoded paddings
                 cont.row(); // for command button
@@ -230,7 +238,7 @@ public class HudFragment {
             cont.name = "mobilebuttons";
             cont.top().left();
 
-            cont.visible(() -> ui.hudfrag.shown && !ui.minimapfrag.shown());
+            cont.visible(() -> ui.hudfrag.shown && !ui.minimapfrag.shown() && (settings.getBool("mobilebuttons") || mobile));
 
             cont.table(Tex.buttonEdge4, pad -> {
                 partitionmb(pad, mode -> {
@@ -262,7 +270,18 @@ public class HudFragment {
                 pad.setHeight(Scl.scl(mobiles.fliped ? 190.8f : 63.8f));
             });
         });
+
+        Table info = getInfoTable();
+        if (info != null) info.update(() -> {
+            TileInfo.apply(info);
+            if (!settings.getBool("mobilebuttons") && !mobile) {
+                info.setTranslation(0f, 0f);
+                return;
+            }
+            info.setTranslation(0f, -Scl.scl(mobiles.fliped ? 190.8f : 63.8f));
+        });
     }
+
     private Cell<Table> partitionbt(Table table, Cons<Table> cons) {
         if (table.hasChildren()) table.image().color(Pal.gray).fillY().width(4f).pad(4f).visible(() -> building.fliped);
         return table.table(cont -> {
@@ -286,11 +305,27 @@ public class HudFragment {
         table.button(icon instanceof String name ? atlas.drawable("status-" + name) : (Drawable) icon, style, 37f, listener);
     }
 
+    private void addClose(Table pad) {
+        pad.table(top -> top.right().button(Icon.cancel, style, () -> ai.deselect()).size(mobile ? 37.5f : 28f).tooltip("@keycomb.reset_ai")).growX().row();
+    }
+
     private void setMove(Table table, Updater move) {
-        table.button(move.icon, check, () -> {
+        var cell = table.button(move.icon, check, () -> {
             GammaAI.move = move;
             ((GammaAI) ai.ai).cache();
-        }).checked(t -> GammaAI.move == move).tooltip(move.tooltip()).size(37.5f);
+        }).checked(t -> GammaAI.move == move).size(37.5f);
+
+        if (!move.needsTarget()) {
+            cell.tooltip(move.tooltip());
+            return;
+        }
+
+        // follow and circle need another player as the target
+        cell.disabled(t -> ai.ai instanceof GammaAI gamma && gamma.targetSelf())
+            .update(button -> button.getImage().setColor(button.isDisabled() ? Color.gray : Color.white))
+            .tooltip(t -> t.background(Styles.black6).margin(4f).label(() -> bundle.get(
+                ai.ai instanceof GammaAI gamma && gamma.targetSelf() ? "gamma.selectplayer" : "gamma." + move.name()
+            )).style(Styles.outlineLabel));
     }
 
     private void setBuild(Table table, Updater build) {
@@ -309,15 +344,23 @@ public class HudFragment {
             block[2] = ui.hudGroup.find("editor");
 
             if (block[0] != null) block[0] = block[0].parent.parent.parent;
+
+            Table info = getInfoTable();
+            if (info != null) info.update(() -> {
+                TileInfo.apply(info);
+                if (!settings.getBool("mobilebuttons") && !mobile) {
+                    info.setTranslation(0f, 0f);
+                    return;
+                }
+                info.setTranslation(0f, -Scl.scl(mobiles.fliped ? 190.8f : 63.8f));
+            });
         });
     }
 
     private Table getInfoTable() {
-        return (Table) ((Table) getWavesMain().getChildren().get(0)).getChildren().get(1);
-    }
-
-    private Stack getWavesMain() {
-        return (Stack) ((Table) ui.hudGroup.find("overlaymarker")).getChildren().get(mobile ? 3 : 0);
+        Element found = ui.hudGroup.find("infotable");
+        if (found instanceof Table) return (Table) found;
+        return null;
     }
 
     private ImageButton getSchematicsButton() {
@@ -348,7 +391,7 @@ public class HudFragment {
             cont.name = "shortcutbutton"; // it's here because there's no sense in renaming an already created table
             cont.bottom().left();
 
-            cont.visible(() -> ui.hudfrag.shown && !ui.minimapfrag.shown());
+            cont.visible(() -> ui.hudfrag.shown && !ui.minimapfrag.shown() && (settings.getBool("mobilebuttons") || mobile));
             cont.marginBottom(SchemeUpdater.installed("test-utils") ? 120f : 0f);
             cons.get(cont);
         });

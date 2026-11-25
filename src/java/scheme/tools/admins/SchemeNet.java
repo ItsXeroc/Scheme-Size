@@ -21,24 +21,50 @@ public class SchemeNet implements AdminsTools {
 
     public String keyName() { return "schemenet"; }
 
-    public void manageRuleBool(boolean value, String name) {
-        if (unusable() || isRestricted(RULESETTER)) return;
+    public boolean manageRuleBool(boolean value, String name) {
+        if (unusable() || isRestricted(RULESETTER)) return false;
         send("rule", name, Boolean.toString(value));
+        return true;
     }
 
-    public void manageRuleStr(String value, String name) {
-        if (unusable() || isRestricted(RULESETTER)) return;
+    public boolean manageRuleStr(String value, String name) {
+        if (unusable() || isRestricted(RULESETTER)) return false;
         send("rule", name, value);
+        return true;
     }
 
-    public void manageTeamRuleBool(int teamId, boolean value, String name) {
-        if (unusable() || isRestricted(RULESETTER)) return;
+    public boolean manageTeamRuleBool(int teamId, boolean value, String name) {
+        if (unusable() || isRestricted(RULESETTER)) return false;
         send("teamrule", teamId, name, Boolean.toString(value));
+        return true;
     }
 
-    public void manageTeamRuleStr(int teamId, String value, String name) {
-        if (unusable() || isRestricted(RULESETTER)) return;
+    public boolean manageTeamRuleStr(int teamId, String value, String name) {
+        if (unusable() || isRestricted(RULESETTER)) return false;
         send("teamrule", teamId, name, value);
+        return true;
+    }
+
+    public boolean manageRuleObjectSet(String fieldName, arc.struct.ObjectSet<?> value) {
+        if (unusable() || isRestricted(RULESETTER)) return false;
+        if (value == null || value.isEmpty()) {
+            send("ruleobjectset", fieldName, "clear");
+            return true;
+        }
+        var it = value.iterator();
+        if (!it.hasNext()) return false;
+        Object first = it.next();
+        if (!(first instanceof mindustry.ctype.Content)) return false;
+        int ordinal = ((mindustry.ctype.Content) first).getContentType().ordinal();
+        StringBuilder ids = new StringBuilder();
+        for (Object obj : value) {
+            if (obj instanceof mindustry.ctype.Content) {
+                if (ids.length() > 0) ids.append(',');
+                ids.append(((mindustry.ctype.Content) obj).id);
+            }
+        }
+        send("ruleobjectset", fieldName, ordinal, ids.toString());
+        return true;
     }
 
     public void manageUnit() {
